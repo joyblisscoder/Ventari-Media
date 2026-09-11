@@ -45,6 +45,7 @@
     [self refreshDevices];
     if (self.cameraEnabled) {
         [_bubble show];
+        [_bubble setBackgroundBlurEnabled:self.backgroundBlurEnabled];
     }
 }
 
@@ -113,9 +114,15 @@
     _cameraEnabled = enabled;
     if (enabled) {
         [_bubble show];
+        [_bubble setBackgroundBlurEnabled:self.backgroundBlurEnabled];
     } else {
         [_bubble hide];
     }
+}
+
+- (void)handleBlurToggle:(BOOL)enabled {
+    _backgroundBlurEnabled = enabled;
+    [_bubble setBackgroundBlurEnabled:enabled];
 }
 
 - (void)pauseIdleHardware {
@@ -126,6 +133,7 @@
 - (void)resumeIdleHardware {
     if (self.cameraEnabled) {
         [_bubble show];
+        [_bubble setBackgroundBlurEnabled:self.backgroundBlurEnabled];
     }
     [[NSNotificationCenter defaultCenter] postNotificationName:VRMediaResumeIdleEffectsNotification object:self];
 }
@@ -194,6 +202,7 @@
 
     if (self.cameraEnabled) {
         [_bubble show];
+        [_bubble setBackgroundBlurEnabled:self.backgroundBlurEnabled];
         [_bubble moveOntoScreen:[self screenForDisplayID:selected.displayID] ifNeeded:YES];
     }
 

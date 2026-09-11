@@ -11,6 +11,7 @@ LIBS = -framework Cocoa \
 	-framework CoreMedia \
 	-framework CoreVideo \
 	-framework CoreImage \
+	-framework Vision \
 	-framework CoreGraphics \
 	-framework CoreFoundation \
 	-framework CoreText \

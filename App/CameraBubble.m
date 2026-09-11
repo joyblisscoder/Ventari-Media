@@ -2,7 +2,9 @@
 #import "Brand.h"
 #import "DeviceCatalog.h"
 #import <AVFoundation/AVFoundation.h>
+#import <CoreImage/CoreImage.h>
 #import <CoreMedia/CoreMedia.h>
+#import <Vision/Vision.h>
 
 static const CGFloat kBubbleSize = 180;
 static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
@@ -35,6 +37,7 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
 
 @interface CameraBubbleView : NSView
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
+@property (nonatomic, strong) CALayer *processedLayer;
 @property (nonatomic, assign) NSPoint dragOffset;
 @end
 
@@ -48,6 +51,12 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
         self.layer.borderWidth = 3;
         self.layer.borderColor = VRGoldColor().CGColor;
         self.layer.backgroundColor = VRBackgroundColor().CGColor;
+        CALayer *processed = [CALayer layer];
+        processed.frame = self.bounds;
+        processed.contentsGravity = kCAGravityResizeAspectFill;
+        processed.hidden = YES;
+        [self.layer insertSublayer:processed atIndex:0];
+        self.processedLayer = processed;
     }
     return self;
 }
@@ -56,6 +65,7 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
     [super layout];
     self.layer.cornerRadius = MIN(self.bounds.size.width, self.bounds.size.height) / 2.0;
     self.previewLayer.frame = self.bounds;
+    self.processedLayer.frame = self.bounds;
 }
 
 - (void)mouseDown:(NSEvent *)event {
@@ -79,19 +89,30 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
 }
 @end
 
+@interface CameraBubble () <AVCaptureVideoDataOutputSampleBufferDelegate>
+@end
+
 @implementation CameraBubble {
     NSPanel *_window;
     CameraBubbleView *_view;
     AVCaptureSession *_session;
     AVCaptureDeviceInput *_input;
+    AVCaptureVideoDataOutput *_videoOutput;
     dispatch_queue_t _sessionQueue;
+    dispatch_queue_t _visionQueue;
     BOOL _wantPreview;
+    BOOL _blurEnabled;
+    BOOL _blurBusy;
+    CIContext *_ciContext;
+    VNGeneratePersonSegmentationRequest *_personRequest;
 }
 
 - (instancetype)init {
     self = [super init];
     if (self) {
         _sessionQueue = dispatch_queue_create("com.ventari.recorder.camera", DISPATCH_QUEUE_SERIAL);
+        _visionQueue = dispatch_queue_create("com.ventari.recorder.vision", DISPATCH_QUEUE_SERIAL);
+        _ciContext = [CIContext contextWithOptions:nil];
         NSRect saved = [self savedFrame];
         NSRect frame = NSIsEmptyRect(saved) ? NSMakeRect(40, 40, kBubbleSize, kBubbleSize) : saved;
         frame = VRClampedBubbleFrame(frame);
@@ -228,14 +249,17 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
         }
     }
 
-    if (!_input) {
+    if (!_input || !_videoOutput) {
         [_session beginConfiguration];
-        NSError *error = nil;
-        AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
-        if (input && [_session canAddInput:input]) {
-            [_session addInput:input];
-            _input = input;
+        if (!_input) {
+            NSError *error = nil;
+            AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
+            if (input && [_session canAddInput:input]) {
+                [_session addInput:input];
+                _input = input;
+            }
         }
+        [self attachVideoOutputLocked];
         [_session commitConfiguration];
     }
 
@@ -251,6 +275,7 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
         }
     });
 
+    [self applyBlurPresentation];
     [_session startRunning];
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -259,6 +284,87 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
         if (connection.isVideoMirroringSupported) {
             connection.videoMirrored = YES;
         }
+    });
+}
+
+- (void)setBackgroundBlurEnabled:(BOOL)enabled {
+    _blurEnabled = enabled;
+    [self applyBlurPresentation];
+    dispatch_async(_sessionQueue, ^{
+        if (!self->_session) return;
+        if (self->_videoOutput) return;
+        [self->_session beginConfiguration];
+        [self attachVideoOutputLocked];
+        [self->_session commitConfiguration];
+    });
+}
+
+- (void)applyBlurPresentation {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self->_view.previewLayer.hidden = self->_blurEnabled;
+        self->_view.processedLayer.hidden = !self->_blurEnabled;
+    });
+}
+
+- (void)attachVideoOutputLocked {
+    if (_videoOutput) return;
+    _videoOutput = [AVCaptureVideoDataOutput new];
+    _videoOutput.alwaysDiscardsLateVideoFrames = YES;
+    _videoOutput.videoSettings = @{ (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
+    [_videoOutput setSampleBufferDelegate:self queue:_visionQueue];
+    if ([_session canAddOutput:_videoOutput]) {
+        [_session addOutput:_videoOutput];
+    }
+}
+
+- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+    if (!_wantPreview || !_blurEnabled || _blurBusy) return;
+    CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    if (!pixelBuffer) return;
+    _blurBusy = YES;
+    [self renderBlurredFrame:pixelBuffer];
+    _blurBusy = NO;
+}
+
+- (void)renderBlurredFrame:(CVPixelBufferRef)pixelBuffer {
+    if (!_personRequest) {
+        _personRequest = [[VNGeneratePersonSegmentationRequest alloc] init];
+        _personRequest.qualityLevel = VNGeneratePersonSegmentationRequestQualityLevelBalanced;
+        _personRequest.outputPixelFormat = kCVPixelFormatType_OneComponent8;
+    }
+
+    VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCVPixelBuffer:pixelBuffer options:@{}];
+    NSError *error = nil;
+    if (![handler performRequests:@[_personRequest] error:&error]) return;
+    VNPixelBufferObservation *observation = _personRequest.results.firstObject;
+    if (![observation isKindOfClass:[VNPixelBufferObservation class]]) return;
+
+    CIImage *person = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+    CIImage *mask = [CIImage imageWithCVPixelBuffer:observation.pixelBuffer];
+    if (mask.extent.size.width < 1 || person.extent.size.width < 1) return;
+    CGFloat scaleX = person.extent.size.width / mask.extent.size.width;
+    CGFloat scaleY = person.extent.size.height / mask.extent.size.height;
+    mask = [mask imageByApplyingTransform:CGAffineTransformMakeScale(scaleX, scaleY)];
+    mask = [[mask imageByApplyingGaussianBlurWithSigma:4.0] imageByCroppingToRect:person.extent];
+
+    CIImage *clamped = [person imageByClampingToExtent];
+    CIImage *blurred = [[clamped imageByApplyingGaussianBlurWithSigma:40.0] imageByCroppingToRect:person.extent];
+
+    CIFilter *blend = [CIFilter filterWithName:@"CIBlendWithMask"];
+    [blend setValue:person forKey:kCIInputImageKey];
+    [blend setValue:blurred forKey:kCIInputBackgroundImageKey];
+    [blend setValue:mask forKey:kCIInputMaskImageKey];
+    CIImage *output = blend.outputImage;
+    if (!output) return;
+
+    CGAffineTransform flip = CGAffineTransformMakeTranslation(person.extent.size.width, 0);
+    flip = CGAffineTransformScale(flip, -1, 1);
+    output = [[output imageByApplyingTransform:flip] imageByCroppingToRect:person.extent];
+
+    CGImageRef cgImage = [_ciContext createCGImage:output fromRect:person.extent];
+    if (!cgImage) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self->_view.processedLayer.contents = CFBridgingRelease(cgImage);
     });
 }
 

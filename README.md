@@ -9,7 +9,7 @@ Nobody should have to pay **$200 a year** just to record their own screen, unlim
 This repo is the **native macOS recorder**. It does the part you actually wanted:
 
 - one screen at a time (all of your displays, pick one)
-- a **draggable circular camera bubble**
+- a **draggable circular camera bubble**, with optional **background blur** that keeps you sharp
 - **3 · 2 · 1** countdown on the screen you chose
 - optional mic (MacBook mic by default, switch anytime)
 - **name the file before it saves**
@@ -53,6 +53,7 @@ Releases: [GitHub Releases](https://github.com/joyblisscoder/Ventari-Media/relea
 | Record **one** of several monitors | Pick it from the Screen menu |
 | Face in a circle, Loom-style | Drag the bubble **before, during, and after** a take |
 | Hide the camera | Toggle **Camera overlay** |
+| Blur the room, keep your body | Toggle **Blur background** |
 | Talk over the video | Toggle **Microphone**, pick any input |
 | Not jump-cut into the take | **3-2-1** on the chosen display, then it rolls |
 | A real filename | Stop → name it → Save. Or Don’t Save. |

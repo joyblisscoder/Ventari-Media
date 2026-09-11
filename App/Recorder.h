@@ -8,6 +8,7 @@
 @property (nonatomic, copy) NSString *selectedMicrophoneID;
 @property (nonatomic, assign) BOOL cameraEnabled;
 @property (nonatomic, assign) BOOL microphoneEnabled;
+@property (nonatomic, assign) BOOL backgroundBlurEnabled;
 @property (nonatomic, assign, readonly) BOOL recording;
 @property (nonatomic, assign, readonly) BOOL countingDown;
 @property (nonatomic, assign, readonly) NSTimeInterval elapsed;
@@ -24,6 +25,7 @@
 - (void)stop;
 - (void)handleCameraToggle:(BOOL)enabled;
 - (void)handleMicrophoneToggle:(BOOL)enabled;
+- (void)handleBlurToggle:(BOOL)enabled;
 - (void)pauseIdleHardware;
 - (void)resumeIdleHardware;
 - (void)openScreenRecordingSettings;

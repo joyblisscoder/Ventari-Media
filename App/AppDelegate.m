@@ -8,6 +8,7 @@
 @property (nonatomic, strong) Recorder *recorder;
 @property (nonatomic, strong) NSPopUpButton *screenPopup;
 @property (nonatomic, strong) NSSwitch *cameraSwitch;
+@property (nonatomic, strong) NSSwitch *blurSwitch;
 @property (nonatomic, strong) NSSwitch *micSwitch;
 @property (nonatomic, strong) NSPopUpButton *micPopup;
 @property (nonatomic, strong) NSButton *recordButton;
@@ -34,7 +35,7 @@
         [weakSelf askForName:suggested respond:respond];
     };
 
-    NSRect frame = NSMakeRect(0, 0, 420, 520);
+    NSRect frame = NSMakeRect(0, 0, 420, 560);
     self.window = [[NSWindow alloc] initWithContentRect:frame
                                               styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskFullSizeContentView)
                                                 backing:NSBackingStoreBuffered
@@ -110,6 +111,11 @@
     self.cameraSwitch.target = self;
     self.cameraSwitch.action = @selector(cameraChanged:);
     [stack addArrangedSubview:[self rowWithTitle:@"Camera overlay" accessory:self.cameraSwitch]];
+
+    self.blurSwitch = [NSSwitch new];
+    self.blurSwitch.target = self;
+    self.blurSwitch.action = @selector(blurChanged:);
+    [stack addArrangedSubview:[self rowWithTitle:@"Blur background" accessory:self.blurSwitch]];
 
     self.micSwitch = [NSSwitch new];
     self.micSwitch.target = self;
@@ -232,6 +238,9 @@
     }
 
     self.cameraSwitch.state = self.recorder.cameraEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.blurSwitch.state = self.recorder.backgroundBlurEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.blurSwitch.enabled = self.recorder.cameraEnabled;
+    self.blurSwitch.alphaValue = self.recorder.cameraEnabled ? 1.0 : 0.45;
     self.micSwitch.state = self.recorder.microphoneEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.screenPopup.enabled = !self.recorder.recording && !self.recorder.countingDown && self.recorder.displays.count > 0;
     self.micPopup.enabled = !self.recorder.recording && self.recorder.microphoneEnabled && self.recorder.microphones.count > 0;
@@ -279,6 +288,12 @@
 - (void)cameraChanged:(id)sender {
     if (self.updatingUI) return;
     [self.recorder handleCameraToggle:self.cameraSwitch.state == NSControlStateValueOn];
+    [self reloadUI];
+}
+
+- (void)blurChanged:(id)sender {
+    if (self.updatingUI) return;
+    [self.recorder handleBlurToggle:self.blurSwitch.state == NSControlStateValueOn];
 }
 
 - (void)micChanged:(id)sender {

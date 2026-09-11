@@ -7,5 +7,6 @@
 - (void)hide;
 - (void)pausePreview;
 - (void)resumePreview;
+- (void)setBackgroundBlurEnabled:(BOOL)enabled;
 - (void)moveOntoScreen:(NSScreen *)screen ifNeeded:(BOOL)ifNeeded;
 @end
