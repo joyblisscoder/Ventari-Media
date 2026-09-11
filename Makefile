@@ -50,6 +50,8 @@ tests:
 	mkdir -p build
 	clang $(CFLAGS) -o build/CompositorTests Tests/CompositorTests.m App/Compositor.m $(LIBS)
 	./build/CompositorTests
+	clang $(CFLAGS) -o build/BlurProcessorTests Tests/BlurProcessorTests.m App/BlurProcessor.m App/Compositor.m $(LIBS)
+	./build/BlurProcessorTests
 
 clean:
 	rm -rf build

@@ -14,6 +14,9 @@
 @property (nonatomic, strong) NSButton *recordButton;
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, strong) NSButton *settingsButton;
+@property (nonatomic, strong) NSColorWell *gradientStartWell;
+@property (nonatomic, strong) NSColorWell *gradientEndWell;
+@property (nonatomic, strong) NSColorWell *cameraRingWell;
 @property (nonatomic, strong) SaveSheet *saveSheet;
 @property (nonatomic, assign) BOOL updatingUI;
 @end
@@ -35,7 +38,7 @@
         [weakSelf askForName:suggested respond:respond];
     };
 
-    NSRect frame = NSMakeRect(0, 0, 420, 560);
+    NSRect frame = NSMakeRect(0, 0, 420, 628);
     self.window = [[NSWindow alloc] initWithContentRect:frame
                                               styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskFullSizeContentView)
                                                 backing:NSBackingStoreBuffered
@@ -129,6 +132,25 @@
     [self.micPopup.widthAnchor constraintEqualToConstant:356].active = YES;
     [stack addArrangedSubview:self.micPopup];
 
+    NSStackView *appearance = [NSStackView new];
+    appearance.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    appearance.alignment = NSLayoutAttributeCenterY;
+    appearance.spacing = 8;
+    [appearance addArrangedSubview:VRLabel(@"Gradient", VRBodyFont(12), VRZincColor())];
+    self.gradientStartWell = [self colorWell:VRGradientStartColor() label:@"Gradient start color"];
+    self.gradientEndWell = [self colorWell:VRGradientEndColor() label:@"Gradient end color"];
+    [appearance addArrangedSubview:self.gradientStartWell];
+    [appearance addArrangedSubview:self.gradientEndWell];
+    [appearance addArrangedSubview:VRLabel(@"Ring", VRBodyFont(12), VRZincColor())];
+    self.cameraRingWell = [self colorWell:VRCameraRingColor() label:@"Camera ring color"];
+    [appearance addArrangedSubview:self.cameraRingWell];
+    NSButton *resetColors = [NSButton buttonWithTitle:@"Reset" target:self action:@selector(resetColors:)];
+    resetColors.bezelStyle = NSBezelStyleRounded;
+    resetColors.controlSize = NSControlSizeSmall;
+    resetColors.toolTip = @"Restore the original gradient and camera ring colors";
+    [appearance addArrangedSubview:resetColors];
+    [stack addArrangedSubview:appearance];
+
     self.recordButton = [NSButton new];
     self.recordButton.title = @"Record";
     self.recordButton.bordered = NO;
@@ -171,6 +193,30 @@
     [row addArrangedSubview:accessory];
     [row.widthAnchor constraintEqualToConstant:356].active = YES;
     return row;
+}
+
+- (NSColorWell *)colorWell:(NSColor *)color label:(NSString *)label {
+    NSColorWell *well = [NSColorWell new];
+    well.color = color;
+    well.continuous = YES;
+    well.target = self;
+    well.action = @selector(appearanceColorChanged:);
+    well.toolTip = label;
+    well.accessibilityLabel = label;
+    [well.widthAnchor constraintEqualToConstant:34].active = YES;
+    [well.heightAnchor constraintEqualToConstant:26].active = YES;
+    return well;
+}
+
+- (void)appearanceColorChanged:(NSColorWell *)sender {
+    VRSetAppearanceColors(self.gradientStartWell.color, self.gradientEndWell.color, self.cameraRingWell.color);
+}
+
+- (void)resetColors:(id)sender {
+    VRResetAppearanceColors();
+    self.gradientStartWell.color = VRGradientStartColor();
+    self.gradientEndWell.color = VRGradientEndColor();
+    self.cameraRingWell.color = VRCameraRingColor();
 }
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {

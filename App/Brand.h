@@ -9,6 +9,12 @@ NSColor *VRZincColor(void);
 NSColor *VRMutedColor(void);
 NSColor *VRBorderColor(void);
 NSColor *VRDangerColor(void);
+NSColor *VRGradientStartColor(void);
+NSColor *VRGradientEndColor(void);
+NSColor *VRCameraRingColor(void);
+void VRSetAppearanceColors(NSColor *start, NSColor *end, NSColor *ring);
+void VRResetAppearanceColors(void);
+extern NSNotificationName const VRMediaAppearanceChangedNotification;
 
 NSFont *VRLogoFont(CGFloat size);
 NSFont *VRHeadingFont(CGFloat size);

@@ -1,7 +1,6 @@
 #import "Brand.h"
 #import <CoreText/CoreText.h>
 #import <QuartzCore/QuartzCore.h>
-#import <math.h>
 
 static NSColor *Hex(NSUInteger hex, CGFloat alpha) {
     return [NSColor colorWithSRGBRed:((hex >> 16) & 0xff) / 255.0
@@ -19,6 +18,43 @@ NSColor *VRZincColor(void) { return Hex(0xf4f4f5, 1); }
 NSColor *VRMutedColor(void) { return Hex(0x71717a, 1); }
 NSColor *VRBorderColor(void) { return Hex(0xffffff, 0.07); }
 NSColor *VRDangerColor(void) { return Hex(0xef4444, 1); }
+
+NSNotificationName const VRMediaAppearanceChangedNotification = @"VRMediaAppearanceChangedNotification";
+static NSString * const VRGradientStartKey = @"VentariMediaGradientStart";
+static NSString * const VRGradientEndKey = @"VentariMediaGradientEnd";
+static NSString * const VRCameraRingKey = @"VentariMediaCameraRing";
+
+static NSColor *VRStoredColor(NSString *key, NSColor *fallback) {
+    id value = [NSUserDefaults.standardUserDefaults objectForKey:key];
+    if (![value isKindOfClass:NSArray.class] || [value count] != 3) return fallback;
+    for (id component in value) {
+        if (![component isKindOfClass:NSNumber.class] || !([component doubleValue] >= 0 && [component doubleValue] <= 1)) return fallback;
+    }
+    return [NSColor colorWithSRGBRed:[value[0] doubleValue] green:[value[1] doubleValue] blue:[value[2] doubleValue] alpha:1];
+}
+
+NSColor *VRGradientStartColor(void) { return VRStoredColor(VRGradientStartKey, VROrangeColor()); }
+NSColor *VRGradientEndColor(void) { return VRStoredColor(VRGradientEndKey, VRGoldColor()); }
+NSColor *VRCameraRingColor(void) { return VRStoredColor(VRCameraRingKey, VRGoldColor()); }
+
+static void VRStoreColor(NSString *key, NSColor *color) {
+    NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (rgb) [NSUserDefaults.standardUserDefaults setObject:@[@(rgb.redComponent), @(rgb.greenComponent), @(rgb.blueComponent)] forKey:key];
+}
+
+void VRSetAppearanceColors(NSColor *start, NSColor *end, NSColor *ring) {
+    VRStoreColor(VRGradientStartKey, start);
+    VRStoreColor(VRGradientEndKey, end);
+    VRStoreColor(VRCameraRingKey, ring);
+    [NSNotificationCenter.defaultCenter postNotificationName:VRMediaAppearanceChangedNotification object:nil];
+}
+
+void VRResetAppearanceColors(void) {
+    for (NSString *key in @[VRGradientStartKey, VRGradientEndKey, VRCameraRingKey]) {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+    }
+    [NSNotificationCenter.defaultCenter postNotificationName:VRMediaAppearanceChangedNotification object:nil];
+}
 
 void VRRegisterBrandFonts(void) {
     NSURL *url = [[NSBundle mainBundle] URLForResource:@"Horizon" withExtension:@"otf"];
@@ -66,15 +102,6 @@ void VROpenSite(void) {
 NSNotificationName const VRMediaPauseIdleEffectsNotification = @"VRMediaPauseIdleEffectsNotification";
 NSNotificationName const VRMediaResumeIdleEffectsNotification = @"VRMediaResumeIdleEffectsNotification";
 
-static id VRColorStop(NSUInteger hex) {
-    return (__bridge id)Hex(hex, 1).CGColor;
-}
-
-static NSValue *VRPoint(CGFloat x, CGFloat y) {
-    CGPoint p = CGPointMake(x, y);
-    return [NSValue value:&p withObjCType:@encode(CGPoint)];
-}
-
 @interface VROrangeGradientView : NSView
 @property (nonatomic, strong) CAGradientLayer *gradient;
 @end
@@ -85,83 +112,24 @@ static NSValue *VRPoint(CGFloat x, CGFloat y) {
     if (self) {
         self.wantsLayer = YES;
         CAGradientLayer *gradient = [CAGradientLayer layer];
-        // Evenly spaced orange → gold → dark so every edge is a fade, never a hard band.
-        gradient.colors = @[
-            VRColorStop(0xff5000),
-            VRColorStop(0xff5c0a),
-            VRColorStop(0xff6a12),
-            VRColorStop(0xff7a18),
-            VRColorStop(0xff8c14),
-            VRColorStop(0xff9c0a),
-            VRColorStop(0xffaa00),
-            VRColorStop(0xe09008),
-            VRColorStop(0xc07010),
-            VRColorStop(0x9a5010),
-            VRColorStop(0x743810),
-            VRColorStop(0x4e2410),
-            VRColorStop(0x2e1408),
-            VRColorStop(0x180a04),
-            VRColorStop(0x0c0602)
-        ];
-        NSMutableArray *locations = [NSMutableArray array];
-        NSUInteger count = 15;
-        for (NSUInteger i = 0; i < count; i++) {
-            [locations addObject:@((CGFloat)i / (CGFloat)(count - 1))];
-        }
-        gradient.locations = locations;
+        gradient.locations = @[@0, @0.43, @1];
         gradient.startPoint = CGPointMake(0.0, 1.0);
         gradient.endPoint = CGPointMake(1.0, 0.0);
         self.layer = gradient;
         self.gradient = gradient;
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pauseIdle) name:VRMediaPauseIdleEffectsNotification object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(resumeIdle) name:VRMediaResumeIdleEffectsNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateAppearance) name:VRMediaAppearanceChangedNotification object:nil];
+        [self updateAppearance];
     }
     return self;
 }
 
-- (void)viewDidMoveToWindow {
-    [super viewDidMoveToWindow];
-    if (self.window) {
-        [self resumeIdle];
-    } else {
-        [self pauseIdle];
-    }
-}
-
-- (void)pauseIdle {
-    [self.gradient removeAllAnimations];
-}
-
-- (void)resumeIdle {
-    [self.gradient removeAllAnimations];
-    if (!self.window) return;
-    if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) return;
-
-    NSMutableArray *starts = [NSMutableArray array];
-    NSMutableArray *ends = [NSMutableArray array];
-    const NSInteger steps = 16;
-    for (NSInteger i = 0; i <= steps; i++) {
-        CGFloat a = ((CGFloat)i / (CGFloat)steps) * (CGFloat)M_PI * 2.0;
-        [starts addObject:VRPoint(0.5 + 0.48 * cos(a), 0.5 + 0.48 * sin(a))];
-        [ends addObject:VRPoint(0.5 - 0.48 * cos(a), 0.5 - 0.48 * sin(a))];
-    }
-
-    CAKeyframeAnimation *start = [CAKeyframeAnimation animationWithKeyPath:@"startPoint"];
-    start.values = starts;
-    start.duration = 28.0;
-    start.repeatCount = HUGE_VALF;
-    start.calculationMode = kCAAnimationPaced;
-    start.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-
-    CAKeyframeAnimation *end = [CAKeyframeAnimation animationWithKeyPath:@"endPoint"];
-    end.values = ends;
-    end.duration = 28.0;
-    end.repeatCount = HUGE_VALF;
-    end.calculationMode = kCAAnimationPaced;
-    end.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-
-    [self.gradient addAnimation:start forKey:@"vr.driftStart"];
-    [self.gradient addAnimation:end forKey:@"vr.driftEnd"];
+- (void)updateAppearance {
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.gradient.colors = @[(__bridge id)VRGradientStartColor().CGColor,
+                             (__bridge id)VRGradientEndColor().CGColor,
+                             (__bridge id)VRBackgroundColor().CGColor];
+    [CATransaction commit];
 }
 
 - (void)layout {

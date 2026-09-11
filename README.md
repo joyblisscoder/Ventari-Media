@@ -61,7 +61,11 @@ Releases: [GitHub Releases](https://github.com/joyblisscoder/Ventari-Media/relea
 | Keep the control panel out of the video | The app window is not captured. The bubble is. |
 | Find Ventari | Click the **V** → [ventari.media](https://ventari.media) |
 
-The orange-gold background on the Record window keeps moving, a continuous fade with no hard color bands. Reduce Motion in System Settings keeps it still.
+Use the two **Gradient** color wells and the **Ring** color well in the Record window to customize the background and camera outline. Colors are saved automatically; **Reset** restores orange and gold. The gradient stays still to reduce graphics usage.
+
+The resize handle appears on hover at the camera circle's **top-right** edge. Drag outward to enlarge or inward to shrink.
+
+Background blur keeps your face on the native live camera preview. Person detection runs separately at up to 15 updates per second, with only one request in flight; it never queues camera frames behind detection. The camera is capped at 30 fps and its processing output is disabled when blur is off. While the first person mask loads, the preview is fully blurred.
 
 ---
 
@@ -87,7 +91,7 @@ Short version: **the camera is a real window.** You drag it. macOS records the d
 
 Under the hood, on macOS 14+:
 
-1. **ScreenCaptureKit** captures the display you picked, cursor included, at the display’s real pixel size.
+1. **ScreenCaptureKit** captures the display you picked, cursor included, at up to 1920 pixels on the long edge and 24 fps.
 2. **AVFoundation** runs the FaceTime camera into a circular floating panel (gold ring, mirrored preview). The panel is a normal shared window, so it is in the recording wherever you parked it.
 3. The control window and the countdown use `NSWindowSharingNone`, so they never appear in the file.
 4. Hit Record → countdown on that screen → capture starts. Hit Stop → writer finishes a temp file → **name sheet** → move to Desktop as `Your Title.mp4`.
