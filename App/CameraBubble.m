@@ -6,11 +6,12 @@
 #import <CoreMedia/CoreMedia.h>
 #import <Vision/Vision.h>
 
-static const CGFloat kBubbleSize = 180;
+static const CGFloat kMinBubbleSize = 120;
+static const CGFloat kDefaultBubbleSize = 180;
+static const CGFloat kHandleSize = 22;
 static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
 
-static NSRect VRClampedBubbleFrame(NSRect frame) {
-    frame.size = NSMakeSize(kBubbleSize, kBubbleSize);
+static NSRect VRHomeScreen(NSRect frame) {
     NSRect home = NSZeroRect;
     CGFloat bestArea = -1;
     NSPoint center = NSMakePoint(NSMidX(frame), NSMidY(frame));
@@ -28,8 +29,23 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
     if (NSIsEmptyRect(home)) {
         home = [NSScreen mainScreen].visibleFrame;
     }
-    CGFloat maxX = NSMaxX(home) - kBubbleSize;
-    CGFloat maxY = NSMaxY(home) - kBubbleSize;
+    return home;
+}
+
+static CGFloat VRMaxBubbleSizeForRect(NSRect visible) {
+    // Half the shorter edge is a circle that covers about a quarter of the screen.
+    return MAX(kMinBubbleSize, MIN(visible.size.width, visible.size.height) * 0.5);
+}
+
+static NSRect VRClampedBubbleFrame(NSRect frame) {
+    NSRect home = VRHomeScreen(frame);
+    CGFloat maxS = VRMaxBubbleSizeForRect(home);
+    CGFloat side = MIN(frame.size.width, frame.size.height);
+    if (side < 1) side = kDefaultBubbleSize;
+    side = MIN(MAX(side, kMinBubbleSize), maxS);
+    frame.size = NSMakeSize(side, side);
+    CGFloat maxX = NSMaxX(home) - side;
+    CGFloat maxY = NSMaxY(home) - side;
     frame.origin.x = MIN(MAX(frame.origin.x, NSMinX(home)), MAX(NSMinX(home), maxX));
     frame.origin.y = MIN(MAX(frame.origin.y, NSMinY(home)), MAX(NSMinY(home), maxY));
     return frame;
@@ -57,6 +73,7 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
         processed.hidden = YES;
         [self.layer insertSublayer:processed atIndex:0];
         self.processedLayer = processed;
+        self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     }
     return self;
 }
@@ -89,11 +106,127 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
 }
 @end
 
+@interface VRResizeHandle : NSView
+@property (nonatomic, assign) BOOL dragging;
+@property (nonatomic, assign) CGFloat startSize;
+@property (nonatomic, assign) NSPoint startMouse;
+@property (nonatomic, assign) NSPoint startTopLeft;
+@end
+
+@implementation VRResizeHandle
+- (instancetype)initWithFrame:(NSRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.wantsLayer = YES;
+        self.layer.cornerRadius = frame.size.width / 2.0;
+        self.layer.backgroundColor = VRGoldColor().CGColor;
+        self.hidden = YES;
+        NSImageView *icon = [NSImageView new];
+        icon.image = [NSImage imageWithSystemSymbolName:@"arrow.up.left.and.arrow.down.right" accessibilityDescription:@"Resize"];
+        icon.imageScaling = NSImageScaleProportionallyDown;
+        icon.contentTintColor = VRBackgroundColor();
+        icon.frame = NSInsetRect(self.bounds, 4, 4);
+        icon.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        [self addSubview:icon];
+    }
+    return self;
+}
+
+- (void)resetCursorRects {
+    [self addCursorRect:self.bounds cursor:[NSCursor crosshairCursor]];
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    self.dragging = YES;
+    NSRect frame = self.window.frame;
+    self.startSize = MIN(frame.size.width, frame.size.height);
+    self.startMouse = [NSEvent mouseLocation];
+    self.startTopLeft = NSMakePoint(NSMinX(frame), NSMaxY(frame));
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    NSPoint mouse = [NSEvent mouseLocation];
+    CGFloat dx = mouse.x - self.startMouse.x;
+    CGFloat dy = mouse.y - self.startMouse.y;
+    CGFloat side = self.startSize + dx - dy;
+    NSRect frame = NSZeroRect;
+    frame.size = NSMakeSize(side, side);
+    frame.origin.x = self.startTopLeft.x;
+    frame.origin.y = self.startTopLeft.y - side;
+    [self.window setFrame:VRClampedBubbleFrame(frame) display:NO];
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    self.dragging = NO;
+    NSWindow *window = self.window;
+    [window setFrame:VRClampedBubbleFrame(window.frame) display:YES];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"VentariRecorderCameraBubbleMoved" object:window];
+    if (!NSPointInRect([self convertPoint:event.locationInWindow fromView:nil], self.bounds)) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"VentariRecorderCameraBubbleHoverEnded" object:window];
+    }
+}
+@end
+
+@interface VRBubbleChrome : NSView
+@property (nonatomic, strong) CameraBubbleView *bubbleView;
+@property (nonatomic, strong) VRResizeHandle *handle;
+@end
+
+@implementation VRBubbleChrome
+- (instancetype)initWithFrame:(NSRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.wantsLayer = YES;
+        self.layer.backgroundColor = NSColor.clearColor.CGColor;
+        _bubbleView = [[CameraBubbleView alloc] initWithFrame:self.bounds];
+        [self addSubview:_bubbleView];
+        _handle = [[VRResizeHandle alloc] initWithFrame:NSMakeRect(0, 0, kHandleSize, kHandleSize)];
+        [self addSubview:_handle];
+        [self layoutHandle];
+    }
+    return self;
+}
+
+- (void)layout {
+    [super layout];
+    self.bubbleView.frame = self.bounds;
+    [self layoutHandle];
+}
+
+- (void)layoutHandle {
+    NSRect bounds = self.bounds;
+    self.handle.frame = NSMakeRect(NSMaxX(bounds) - kHandleSize, 0, kHandleSize, kHandleSize);
+}
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea *area in [self.trackingAreas copy]) {
+        [self removeTrackingArea:area];
+    }
+    NSTrackingArea *area = [[NSTrackingArea alloc] initWithRect:self.bounds
+                                                        options:(NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect)
+                                                          owner:self
+                                                       userInfo:nil];
+    [self addTrackingArea:area];
+}
+
+- (void)mouseEntered:(NSEvent *)event {
+    self.handle.hidden = NO;
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    if (!self.handle.dragging) {
+        self.handle.hidden = YES;
+    }
+}
+@end
+
 @interface CameraBubble () <AVCaptureVideoDataOutputSampleBufferDelegate>
 @end
 
 @implementation CameraBubble {
     NSPanel *_window;
+    VRBubbleChrome *_chrome;
     CameraBubbleView *_view;
     AVCaptureSession *_session;
     AVCaptureDeviceInput *_input;
@@ -102,7 +235,6 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
     dispatch_queue_t _visionQueue;
     BOOL _wantPreview;
     BOOL _blurEnabled;
-    BOOL _blurBusy;
     CIContext *_ciContext;
     VNGeneratePersonSegmentationRequest *_personRequest;
 }
@@ -112,9 +244,9 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
     if (self) {
         _sessionQueue = dispatch_queue_create("com.ventari.recorder.camera", DISPATCH_QUEUE_SERIAL);
         _visionQueue = dispatch_queue_create("com.ventari.recorder.vision", DISPATCH_QUEUE_SERIAL);
-        _ciContext = [CIContext contextWithOptions:nil];
+        _ciContext = [CIContext contextWithOptions:@{kCIContextCacheIntermediates: @NO}];
         NSRect saved = [self savedFrame];
-        NSRect frame = NSIsEmptyRect(saved) ? NSMakeRect(40, 40, kBubbleSize, kBubbleSize) : saved;
+        NSRect frame = NSIsEmptyRect(saved) ? NSMakeRect(40, 40, kDefaultBubbleSize, kDefaultBubbleSize) : saved;
         frame = VRClampedBubbleFrame(frame);
         _window = [[NSPanel alloc] initWithContentRect:frame
                                             styleMask:(NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel)
@@ -134,15 +266,26 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
         _window.movableByWindowBackground = NO;
         _window.acceptsMouseMovedEvents = YES;
 
-        _view = [[CameraBubbleView alloc] initWithFrame:NSMakeRect(0, 0, kBubbleSize, kBubbleSize)];
-        _window.contentView = _view;
+        _chrome = [[VRBubbleChrome alloc] initWithFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height)];
+        _view = _chrome.bubbleView;
+        _window.contentView = _chrome;
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(persistFrame)
                                                      name:@"VentariRecorderCameraBubbleMoved"
                                                    object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handleHoverEnded)
+                                                     name:@"VentariRecorderCameraBubbleHoverEnded"
+                                                   object:nil];
     }
     return self;
+}
+
+- (void)handleHoverEnded {
+    if (!_chrome.handle.dragging) {
+        _chrome.handle.hidden = YES;
+    }
 }
 
 - (NSWindow *)window {
@@ -318,37 +461,47 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
 }
 
 - (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
-    if (!_wantPreview || !_blurEnabled || _blurBusy) return;
+    if (!_wantPreview || !_blurEnabled) return;
     CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     if (!pixelBuffer) return;
-    _blurBusy = YES;
     [self renderBlurredFrame:pixelBuffer];
-    _blurBusy = NO;
 }
 
 - (void)renderBlurredFrame:(CVPixelBufferRef)pixelBuffer {
     if (!_personRequest) {
         _personRequest = [[VNGeneratePersonSegmentationRequest alloc] init];
-        _personRequest.qualityLevel = VNGeneratePersonSegmentationRequestQualityLevelBalanced;
+        _personRequest.qualityLevel = VNGeneratePersonSegmentationRequestQualityLevelFast;
         _personRequest.outputPixelFormat = kCVPixelFormatType_OneComponent8;
     }
 
-    VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCVPixelBuffer:pixelBuffer options:@{}];
+    CIImage *person = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+    if (person.extent.size.width < 1) return;
+
+    CGFloat visionScale = MIN(1.0, 360.0 / person.extent.size.width);
+    CIImage *visionInput = person;
+    if (visionScale < 0.999) {
+        visionInput = [person imageByApplyingTransform:CGAffineTransformMakeScale(visionScale, visionScale)];
+    }
+
+    VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCIImage:visionInput options:@{}];
     NSError *error = nil;
     if (![handler performRequests:@[_personRequest] error:&error]) return;
     VNPixelBufferObservation *observation = _personRequest.results.firstObject;
     if (![observation isKindOfClass:[VNPixelBufferObservation class]]) return;
 
-    CIImage *person = [CIImage imageWithCVPixelBuffer:pixelBuffer];
     CIImage *mask = [CIImage imageWithCVPixelBuffer:observation.pixelBuffer];
-    if (mask.extent.size.width < 1 || person.extent.size.width < 1) return;
+    if (mask.extent.size.width < 1) return;
     CGFloat scaleX = person.extent.size.width / mask.extent.size.width;
     CGFloat scaleY = person.extent.size.height / mask.extent.size.height;
     mask = [mask imageByApplyingTransform:CGAffineTransformMakeScale(scaleX, scaleY)];
-    mask = [[mask imageByApplyingGaussianBlurWithSigma:4.0] imageByCroppingToRect:person.extent];
+    mask = [[mask imageByApplyingGaussianBlurWithSigma:1.5] imageByCroppingToRect:person.extent];
 
-    CIImage *clamped = [person imageByClampingToExtent];
-    CIImage *blurred = [[clamped imageByApplyingGaussianBlurWithSigma:40.0] imageByCroppingToRect:person.extent];
+    const CGFloat down = 0.22;
+    CIImage *tiny = [person imageByApplyingTransform:CGAffineTransformMakeScale(down, down)];
+    tiny = [tiny imageByClampingToExtent];
+    CIImage *blurred = [tiny imageByApplyingGaussianBlurWithSigma:9.0];
+    blurred = [blurred imageByApplyingTransform:CGAffineTransformMakeScale(1.0 / down, 1.0 / down)];
+    blurred = [blurred imageByCroppingToRect:person.extent];
 
     CIFilter *blend = [CIFilter filterWithName:@"CIBlendWithMask"];
     [blend setValue:person forKey:kCIInputImageKey];
@@ -376,21 +529,15 @@ static NSRect VRClampedBubbleFrame(NSRect frame) {
     NSString *value = [[NSUserDefaults standardUserDefaults] stringForKey:kFrameKey];
     if (value.length == 0) return NSZeroRect;
     NSRect frame = NSRectFromString(value);
-    if (frame.size.width < 80 || frame.size.height < 80) return NSZeroRect;
-    frame.size = NSMakeSize(kBubbleSize, kBubbleSize);
+    if (frame.size.width < kMinBubbleSize || frame.size.height < kMinBubbleSize) return NSZeroRect;
+    CGFloat side = MIN(frame.size.width, frame.size.height);
+    frame.size = NSMakeSize(side, side);
     return frame;
-}
-
-- (BOOL)frameIsOnAnyScreen:(NSRect)frame {
-    for (NSScreen *screen in [NSScreen screens]) {
-        if (NSIntersectsRect(frame, screen.visibleFrame)) return YES;
-    }
-    return NO;
 }
 
 - (void)placeDefaultOnScreen:(NSScreen *)screen {
     NSRect visible = screen.visibleFrame;
-    [_window setFrame:NSMakeRect(NSMinX(visible) + 28, NSMinY(visible) + 28, kBubbleSize, kBubbleSize) display:NO];
+    [_window setFrame:NSMakeRect(NSMinX(visible) + 28, NSMinY(visible) + 28, kDefaultBubbleSize, kDefaultBubbleSize) display:NO];
 }
 
 @end

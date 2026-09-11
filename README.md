@@ -9,7 +9,7 @@ Nobody should have to pay **$200 a year** just to record their own screen, unlim
 This repo is the **native macOS recorder**. It does the part you actually wanted:
 
 - one screen at a time (all of your displays, pick one)
-- a **draggable circular camera bubble**, with optional **background blur** that keeps you sharp
+- a **draggable circular camera bubble** you can resize from the corner (up to a quarter of the screen), with optional **background blur** that keeps you sharp
 - **3 · 2 · 1** countdown on the screen you chose
 - optional mic (MacBook mic by default, switch anytime)
 - **name the file before it saves**
