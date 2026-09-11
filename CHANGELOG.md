@@ -4,7 +4,7 @@
 
 **Freedom to screen recording!**
 
-- Title is **Ventari Media**. The V logo is the only click target — it opens [ventari.media](https://ventari.media) (Mac, Windows, phone).
+- Title is **Ventari Media**. The V logo is the only click target. It opens [ventari.media](https://ventari.media) (Mac, Windows, phone).
 - Tagline under the name: **Freedom to screen recording!**
 - Orange-gold background now drifts continuously with a soft fade. No hard color bands. Reduce Motion still disables it.
 - macOS app installs as `Ventari Media.app`.

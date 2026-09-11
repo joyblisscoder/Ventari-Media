@@ -6,8 +6,6 @@ Nobody should have to pay **$200 a year** just to record their own screen, unlim
 
 **Freedom to screen recording!**
 
-[ventari.media](https://ventari.media) is home. The V in the app is a button. Click it — Mac, Windows, or phone — and you land on the site.
-
 This repo is the **native macOS recorder**. It does the part you actually wanted:
 
 - one screen at a time (all of your displays, pick one)
@@ -19,7 +17,7 @@ This repo is the **native macOS recorder**. It does the part you actually wanted
 
 No account. No cloud. No “you have 25 minutes left this month.” The file is on your machine when you hit Save.
 
-<p align="center"><a href="https://ventari.media"><img src="Resources/Logo.png" width="96" alt="Ventari Media — ventari.media" /></a></p>
+<p align="center"><a href="https://ventari.media"><img src="Resources/Logo.png" width="96" alt="Ventari Media" /></a></p>
 
 <p align="center"><strong>Freedom to screen recording!</strong><br /><a href="https://ventari.media">ventari.media</a></p>
 
@@ -42,7 +40,7 @@ Not affiliated with Loom. We just think charging rent on a screen recorder is a 
 | | |
 | --- | --- |
 | **macOS 14+** | Native app in this repo. `make install` puts **Ventari Media** on the Desktop and in `/Applications`. |
-| **Windows** | [ventari.media](https://ventari.media) is the same brand on any Windows browser. The clickable V in the Mac app opens that URL. A native Windows recorder is not in this release — the site is. |
+| **Windows** | [ventari.media](https://ventari.media) is the same brand on any Windows browser. The clickable V in the Mac app opens that URL. A native Windows recorder is not in this release. The site is. |
 
 Releases: [GitHub Releases](https://github.com/joyblisscoder/Ventari-Media/releases)
 
@@ -62,7 +60,7 @@ Releases: [GitHub Releases](https://github.com/joyblisscoder/Ventari-Media/relea
 | Keep the control panel out of the video | The app window is not captured. The bubble is. |
 | Find Ventari | Click the **V** → [ventari.media](https://ventari.media) |
 
-The orange-gold background on the Record window keeps moving — a continuous fade, no hard color bands. Reduce Motion in System Settings keeps it still.
+The orange-gold background on the Record window keeps moving, a continuous fade with no hard color bands. Reduce Motion in System Settings keeps it still.
 
 ---
 
