@@ -1,0 +1,6 @@
+build/
+.DS_Store
+*.swp
+Resources/AppIcon.iconset
+.idea/
+.vscode/
