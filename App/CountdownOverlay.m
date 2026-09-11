@@ -2,8 +2,8 @@
 #import "Brand.h"
 
 @interface CountdownOverlay ()
-@property (nonatomic, strong) NSWindow *window;
-@property (nonatomic, strong) NSTextField *label;
+@property (nonatomic, copy) NSArray<NSWindow *> *windows;
+@property (nonatomic, copy) NSArray<NSTextField *> *labels;
 @property (nonatomic, copy) void (^completion)(BOOL cancelled);
 @property (nonatomic, assign) NSInteger remaining;
 @property (nonatomic, strong) NSTimer *timer;
@@ -11,40 +11,47 @@
 
 @implementation CountdownOverlay
 
-- (void)runOnScreen:(NSScreen *)screen completion:(void (^)(BOOL))completion {
+- (void)runOnScreens:(NSArray<NSScreen *> *)screens completion:(void (^)(BOOL))completion {
     [self teardownSilent];
     self.completion = completion;
     self.remaining = 3;
 
-    NSRect frame = screen.frame;
-    self.window = [[NSWindow alloc] initWithContentRect:frame
-                                              styleMask:NSWindowStyleMaskBorderless
-                                                backing:NSBackingStoreBuffered
-                                                  defer:NO];
-    self.window.opaque = NO;
-    self.window.backgroundColor = [VRBackgroundColor() colorWithAlphaComponent:0.62];
-    self.window.level = NSModalPanelWindowLevel;
-    self.window.hidesOnDeactivate = NO;
-    self.window.releasedWhenClosed = NO;
-    self.window.sharingType = NSWindowSharingNone;
-    self.window.ignoresMouseEvents = YES;
-    self.window.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces
-        | NSWindowCollectionBehaviorFullScreenAuxiliary
-        | NSWindowCollectionBehaviorTransient;
+    NSMutableArray<NSWindow *> *windows = [NSMutableArray array];
+    NSMutableArray<NSTextField *> *labels = [NSMutableArray array];
+    NSArray<NSScreen *> *targets = screens.count ? screens : [NSScreen screens];
+    for (NSScreen *screen in targets) {
+        NSWindow *window = [[NSWindow alloc] initWithContentRect:screen.frame
+                                                       styleMask:NSWindowStyleMaskBorderless
+                                                         backing:NSBackingStoreBuffered
+                                                           defer:NO];
+        window.opaque = NO;
+        window.backgroundColor = [VRBackgroundColor() colorWithAlphaComponent:0.62];
+        window.level = NSModalPanelWindowLevel;
+        window.hidesOnDeactivate = NO;
+        window.releasedWhenClosed = NO;
+        window.sharingType = NSWindowSharingNone;
+        window.ignoresMouseEvents = YES;
+        window.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces
+            | NSWindowCollectionBehaviorFullScreenAuxiliary
+            | NSWindowCollectionBehaviorTransient;
 
-    self.label = [NSTextField labelWithString:@"3"];
-    self.label.font = [NSFont monospacedDigitSystemFontOfSize:220 weight:NSFontWeightBold];
-    self.label.textColor = VRGoldColor();
-    self.label.alignment = NSTextAlignmentCenter;
-    self.label.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.window.contentView addSubview:self.label];
-    [NSLayoutConstraint activateConstraints:@[
-        [self.label.centerXAnchor constraintEqualToAnchor:self.window.contentView.centerXAnchor],
-        [self.label.centerYAnchor constraintEqualToAnchor:self.window.contentView.centerYAnchor]
-    ]];
-
-    [self.window setFrame:frame display:YES];
-    [self.window orderFrontRegardless];
+        NSTextField *label = [NSTextField labelWithString:@"3"];
+        label.font = [NSFont monospacedDigitSystemFontOfSize:220 weight:NSFontWeightBold];
+        label.textColor = VRGoldColor();
+        label.alignment = NSTextAlignmentCenter;
+        label.translatesAutoresizingMaskIntoConstraints = NO;
+        [window.contentView addSubview:label];
+        [NSLayoutConstraint activateConstraints:@[
+            [label.centerXAnchor constraintEqualToAnchor:window.contentView.centerXAnchor],
+            [label.centerYAnchor constraintEqualToAnchor:window.contentView.centerYAnchor]
+        ]];
+        [window setFrame:screen.frame display:YES];
+        [window orderFrontRegardless];
+        [windows addObject:window];
+        [labels addObject:label];
+    }
+    self.windows = windows;
+    self.labels = labels;
     [self tick];
 }
 
@@ -55,7 +62,10 @@
         if (done) done(NO);
         return;
     }
-    self.label.stringValue = [NSString stringWithFormat:@"%ld", (long)self.remaining];
+    NSString *text = [NSString stringWithFormat:@"%ld", (long)self.remaining];
+    for (NSTextField *label in self.labels) {
+        label.stringValue = text;
+    }
     self.remaining -= 1;
     __weak typeof(self) weakSelf = self;
     self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:NO block:^(NSTimer *timer) {
@@ -74,9 +84,11 @@
     [self.timer invalidate];
     self.timer = nil;
     self.completion = nil;
-    [self.window orderOut:nil];
-    self.window = nil;
-    self.label = nil;
+    for (NSWindow *window in self.windows) {
+        [window orderOut:nil];
+    }
+    self.windows = nil;
+    self.labels = nil;
 }
 
 @end

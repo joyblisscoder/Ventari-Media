@@ -120,13 +120,12 @@
 
 - (void)pauseIdleHardware {
     if (self.recording || self.countingDown) return;
-    [_bubble pausePreview];
     [[NSNotificationCenter defaultCenter] postNotificationName:VRMediaPauseIdleEffectsNotification object:self];
 }
 
 - (void)resumeIdleHardware {
     if (self.cameraEnabled) {
-        [_bubble resumePreview];
+        [_bubble show];
     }
     [[NSNotificationCenter defaultCenter] postNotificationName:VRMediaResumeIdleEffectsNotification object:self];
 }
@@ -139,7 +138,7 @@
 }
 
 - (void)start {
-    if (self.recording) return;
+    if (self.recording || self.countingDown) return;
 
     DisplayInfo *selected = nil;
     for (DisplayInfo *info in self.displays) {
@@ -155,6 +154,10 @@
 
     if (self.cameraEnabled) {
         AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+        if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) {
+            if (self.onError) self.onError(@"Allow Camera access for Ventari Media in System Settings.", NO);
+            return;
+        }
         if (status != AVAuthorizationStatusAuthorized) {
             [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
                 dispatch_async(dispatch_get_main_queue(), ^{
@@ -198,8 +201,9 @@
     if (self.onChange) self.onChange();
 
     NSScreen *target = [self screenForDisplayID:selected.displayID];
+    NSArray<NSScreen *> *countdownScreens = target ? @[target] : [NSScreen screens];
     __weak typeof(self) weakSelf = self;
-    [_countdown runOnScreen:target completion:^(BOOL cancelled) {
+    [_countdown runOnScreens:countdownScreens completion:^(BOOL cancelled) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
         self->_countingDown = NO;

@@ -7,8 +7,35 @@
 static const CGFloat kBubbleSize = 180;
 static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
 
+static NSRect VRClampedBubbleFrame(NSRect frame) {
+    frame.size = NSMakeSize(kBubbleSize, kBubbleSize);
+    NSRect home = NSZeroRect;
+    CGFloat bestArea = -1;
+    NSPoint center = NSMakePoint(NSMidX(frame), NSMidY(frame));
+    for (NSScreen *screen in [NSScreen screens]) {
+        NSRect visible = screen.visibleFrame;
+        if (NSPointInRect(center, visible) || NSIntersectsRect(frame, visible)) {
+            NSRect overlap = NSIntersectionRect(frame, visible);
+            CGFloat area = NSWidth(overlap) * NSHeight(overlap);
+            if (area > bestArea) {
+                bestArea = area;
+                home = visible;
+            }
+        }
+    }
+    if (NSIsEmptyRect(home)) {
+        home = [NSScreen mainScreen].visibleFrame;
+    }
+    CGFloat maxX = NSMaxX(home) - kBubbleSize;
+    CGFloat maxY = NSMaxY(home) - kBubbleSize;
+    frame.origin.x = MIN(MAX(frame.origin.x, NSMinX(home)), MAX(NSMinX(home), maxX));
+    frame.origin.y = MIN(MAX(frame.origin.y, NSMinY(home)), MAX(NSMinY(home), maxY));
+    return frame;
+}
+
 @interface CameraBubbleView : NSView
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
+@property (nonatomic, assign) NSPoint dragOffset;
 @end
 
 @implementation CameraBubbleView
@@ -32,18 +59,23 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
 }
 
 - (void)mouseDown:(NSEvent *)event {
+    NSPoint mouse = [NSEvent mouseLocation];
+    NSRect frame = self.window.frame;
+    self.dragOffset = NSMakePoint(mouse.x - frame.origin.x, mouse.y - frame.origin.y);
 }
 
 - (void)mouseDragged:(NSEvent *)event {
-    NSWindow *window = self.window;
-    NSRect frame = window.frame;
-    frame.origin.x += event.deltaX;
-    frame.origin.y += event.deltaY;
-    [window setFrame:frame display:NO];
+    NSPoint mouse = [NSEvent mouseLocation];
+    NSRect frame = self.window.frame;
+    frame.origin.x = mouse.x - self.dragOffset.x;
+    frame.origin.y = mouse.y - self.dragOffset.y;
+    [self.window setFrame:VRClampedBubbleFrame(frame) display:NO];
 }
 
 - (void)mouseUp:(NSEvent *)event {
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"VentariRecorderCameraBubbleMoved" object:self.window];
+    NSWindow *window = self.window;
+    [window setFrame:VRClampedBubbleFrame(window.frame) display:YES];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"VentariRecorderCameraBubbleMoved" object:window];
 }
 @end
 
@@ -52,13 +84,17 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
     CameraBubbleView *_view;
     AVCaptureSession *_session;
     AVCaptureDeviceInput *_input;
+    dispatch_queue_t _sessionQueue;
+    BOOL _wantPreview;
 }
 
 - (instancetype)init {
     self = [super init];
     if (self) {
+        _sessionQueue = dispatch_queue_create("com.ventari.recorder.camera", DISPATCH_QUEUE_SERIAL);
         NSRect saved = [self savedFrame];
         NSRect frame = NSIsEmptyRect(saved) ? NSMakeRect(40, 40, kBubbleSize, kBubbleSize) : saved;
+        frame = VRClampedBubbleFrame(frame);
         _window = [[NSPanel alloc] initWithContentRect:frame
                                             styleMask:(NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel)
                                               backing:NSBackingStoreBuffered
@@ -97,15 +133,13 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
 }
 
 - (void)show {
+    [self clampToVisibleScreens];
+    [_window orderFrontRegardless];
     [self requestCameraThen:^(BOOL granted) {
         if (!granted) return;
         [self startPreview];
-        if (!self->_window.isVisible) {
-            if (![self frameIsOnAnyScreen:self->_window.frame]) {
-                [self placeDefaultOnScreen:[NSScreen mainScreen]];
-            }
-            [self->_window orderFrontRegardless];
-        }
+        [self clampToVisibleScreens];
+        [self->_window orderFrontRegardless];
     }];
 }
 
@@ -125,15 +159,30 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
 }
 
 - (void)moveOntoScreen:(NSScreen *)screen ifNeeded:(BOOL)ifNeeded {
-    if (!screen) return;
-    NSRect frame = _window.frame;
+    if (!screen) {
+        [self clampToVisibleScreens];
+        return;
+    }
     NSRect visible = screen.visibleFrame;
-    BOOL onScreen = NSIntersectsRect(NSInsetRect(frame, 20, 20), visible);
-    if (ifNeeded && onScreen) return;
-    CGFloat x = NSMinX(visible) + 28;
-    CGFloat y = NSMinY(visible) + 28;
-    [_window setFrame:NSMakeRect(x, y, kBubbleSize, kBubbleSize) display:YES];
+    NSRect frame = _window.frame;
+    BOOL fullyOn = NSContainsRect(visible, frame);
+    if (ifNeeded && fullyOn) return;
+    if (fullyOn) {
+        [self clampToVisibleScreens];
+        return;
+    }
+    frame.origin.x = NSMinX(visible) + 28;
+    frame.origin.y = NSMinY(visible) + 28;
+    [_window setFrame:VRClampedBubbleFrame(frame) display:YES];
     [self persistFrame];
+}
+
+- (void)clampToVisibleScreens {
+    NSRect clamped = VRClampedBubbleFrame(_window.frame);
+    if (!NSEqualRects(clamped, _window.frame)) {
+        [_window setFrame:clamped display:YES];
+        [self persistFrame];
+    }
 }
 
 - (void)requestCameraThen:(void (^)(BOOL granted))completion {
@@ -150,65 +199,66 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
 }
 
 - (void)startPreview {
+    _wantPreview = YES;
+    dispatch_async(_sessionQueue, ^{
+        [self startPreviewOnQueue];
+    });
+}
+
+- (void)stopPreview {
+    _wantPreview = NO;
+    dispatch_async(_sessionQueue, ^{
+        if (self->_session.isRunning) {
+            [self->_session stopRunning];
+        }
+    });
+}
+
+- (void)startPreviewOnQueue {
+    if (!_wantPreview) return;
     if (_session.isRunning) return;
+
     AVCaptureDevice *device = [DeviceCatalog defaultCamera];
     if (!device) return;
 
     if (!_session) {
         _session = [AVCaptureSession new];
-        if ([_session canSetSessionPreset:AVCaptureSessionPreset640x480]) {
-            _session.sessionPreset = AVCaptureSessionPreset640x480;
-        } else {
+        if ([_session canSetSessionPreset:AVCaptureSessionPresetMedium]) {
             _session.sessionPreset = AVCaptureSessionPresetMedium;
         }
     }
 
-    [_session beginConfiguration];
-    if (_input) {
-        [_session removeInput:_input];
-        _input = nil;
-    }
-    NSError *error = nil;
-    AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
-    if (input && [_session canAddInput:input]) {
-        [_session addInput:input];
-        _input = input;
-    }
-    if ([device lockForConfiguration:&error]) {
-        if ([device.activeFormat.videoSupportedFrameRateRanges count] > 0) {
-            device.activeVideoMinFrameDuration = CMTimeMake(1, 12);
-            device.activeVideoMaxFrameDuration = CMTimeMake(1, 12);
+    if (!_input) {
+        [_session beginConfiguration];
+        NSError *error = nil;
+        AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
+        if (input && [_session canAddInput:input]) {
+            [_session addInput:input];
+            _input = input;
         }
-        [device unlockForConfiguration];
-    }
-    [_session commitConfiguration];
-
-    if (!_view.previewLayer) {
-        AVCaptureVideoPreviewLayer *preview = [AVCaptureVideoPreviewLayer layerWithSession:_session];
-        preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
-        preview.frame = _view.bounds;
-        [_view.layer insertSublayer:preview atIndex:0];
-        _view.previewLayer = preview;
-    } else {
-        _view.previewLayer.session = _session;
+        [_session commitConfiguration];
     }
 
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        [self->_session startRunning];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            AVCaptureConnection *connection = self->_view.previewLayer.connection;
-            connection.automaticallyAdjustsVideoMirroring = NO;
-            if (connection.isVideoMirroringSupported) {
-                connection.videoMirrored = YES;
-            }
-        });
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        if (!self->_view.previewLayer) {
+            AVCaptureVideoPreviewLayer *preview = [AVCaptureVideoPreviewLayer layerWithSession:self->_session];
+            preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
+            preview.frame = self->_view.bounds;
+            [self->_view.layer insertSublayer:preview atIndex:0];
+            self->_view.previewLayer = preview;
+        } else {
+            self->_view.previewLayer.session = self->_session;
+        }
     });
-}
 
-- (void)stopPreview {
-    AVCaptureSession *session = _session;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        if (session.isRunning) [session stopRunning];
+    [_session startRunning];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        AVCaptureConnection *connection = self->_view.previewLayer.connection;
+        connection.automaticallyAdjustsVideoMirroring = NO;
+        if (connection.isVideoMirroringSupported) {
+            connection.videoMirrored = YES;
+        }
     });
 }
 
