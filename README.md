@@ -44,7 +44,7 @@ Not affiliated with Loom. We just think charging rent on a screen recorder is a 
 | **macOS 14+** | Native app in this repo. `make install` puts **Ventari Media** on the Desktop and in `/Applications`. |
 | **Windows** | [ventari.media](https://ventari.media) is the same brand on any Windows browser. The clickable V in the Mac app opens that URL. A native Windows recorder is not in this release — the site is. |
 
-Releases: [GitHub Releases](https://github.com/joyblisscoder/Ventari-recorder/releases)
+Releases: [GitHub Releases](https://github.com/joyblisscoder/Ventari-Media/releases)
 
 ---
 
@@ -115,8 +115,8 @@ First launch on a new Mac: System Settings → Privacy & Security → Screen & S
 macOS 14+, Apple Command Line Tools, `clang` and `make`.
 
 ```sh
-git clone https://github.com/joyblisscoder/Ventari-recorder.git
-cd Ventari-recorder
+git clone https://github.com/joyblisscoder/Ventari-Media.git
+cd Ventari-Media
 make
 make install
 ```
