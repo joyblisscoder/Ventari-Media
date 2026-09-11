@@ -24,6 +24,8 @@
 - (void)stop;
 - (void)handleCameraToggle:(BOOL)enabled;
 - (void)handleMicrophoneToggle:(BOOL)enabled;
+- (void)pauseIdleHardware;
+- (void)resumeIdleHardware;
 - (void)openScreenRecordingSettings;
 - (NSString *)elapsedLabel;
 - (BOOL)canRecord;

@@ -60,6 +60,13 @@
         }
         captureWidth = MAX(2, captureWidth - (captureWidth % 2));
         captureHeight = MAX(2, captureHeight - (captureHeight % 2));
+        const NSInteger maxSide = 1920;
+        NSInteger longSide = MAX(captureWidth, captureHeight);
+        if (longSide > maxSide) {
+            CGFloat scale = (CGFloat)maxSide / (CGFloat)longSide;
+            captureWidth = MAX(2, ((NSInteger)(captureWidth * scale)) & ~1);
+            captureHeight = MAX(2, ((NSInteger)(captureHeight * scale)) & ~1);
+        }
 
         NSError *writerError = nil;
         self->_writer = [[MovieWriter alloc] initWithURL:outputURL width:captureWidth height:captureHeight includeAudio:microphoneEnabled error:&writerError];
@@ -79,8 +86,8 @@
         SCStreamConfiguration *config = [SCStreamConfiguration new];
         config.width = captureWidth;
         config.height = captureHeight;
-        config.minimumFrameInterval = CMTimeMake(1, 30);
-        config.queueDepth = 8;
+        config.minimumFrameInterval = CMTimeMake(1, 24);
+        config.queueDepth = 3;
         config.showsCursor = YES;
         config.capturesAudio = NO;
         config.pixelFormat = kCVPixelFormatType_32BGRA;

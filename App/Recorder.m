@@ -1,4 +1,5 @@
 #import "Recorder.h"
+#import "Brand.h"
 #import "CameraBubble.h"
 #import "CaptureEngine.h"
 #import "CountdownOverlay.h"
@@ -115,6 +116,19 @@
     } else {
         [_bubble hide];
     }
+}
+
+- (void)pauseIdleHardware {
+    if (self.recording || self.countingDown) return;
+    [_bubble pausePreview];
+    [[NSNotificationCenter defaultCenter] postNotificationName:VRMediaPauseIdleEffectsNotification object:self];
+}
+
+- (void)resumeIdleHardware {
+    if (self.cameraEnabled) {
+        [_bubble resumePreview];
+    }
+    [[NSNotificationCenter defaultCenter] postNotificationName:VRMediaResumeIdleEffectsNotification object:self];
 }
 
 - (void)handleMicrophoneToggle:(BOOL)enabled {

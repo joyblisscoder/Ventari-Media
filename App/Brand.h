@@ -19,6 +19,9 @@ void VRRegisterBrandFonts(void);
 NSImage *VRLogoImage(void);
 NSURL *VRSiteURL(void);
 void VROpenSite(void);
+extern NSNotificationName const VRMediaPauseIdleEffectsNotification;
+extern NSNotificationName const VRMediaResumeIdleEffectsNotification;
+
 void VRStyleWindow(NSWindow *window);
 void VRInstallOrangeGradient(NSView *view);
 void VRStylePopup(NSPopUpButton *popup);

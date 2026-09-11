@@ -169,6 +169,11 @@
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
     [self.recorder refreshDevices];
+    [self.recorder resumeIdleHardware];
+}
+
+- (void)applicationWillResignActive:(NSNotification *)notification {
+    [self.recorder pauseIdleHardware];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {

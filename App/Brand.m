@@ -63,14 +63,20 @@ void VROpenSite(void) {
     if (url) [[NSWorkspace sharedWorkspace] openURL:url];
 }
 
+NSNotificationName const VRMediaPauseIdleEffectsNotification = @"VRMediaPauseIdleEffectsNotification";
+NSNotificationName const VRMediaResumeIdleEffectsNotification = @"VRMediaResumeIdleEffectsNotification";
+
 static id VRColorStop(NSUInteger hex) {
     return (__bridge id)Hex(hex, 1).CGColor;
 }
 
+static NSValue *VRPoint(CGFloat x, CGFloat y) {
+    CGPoint p = CGPointMake(x, y);
+    return [NSValue value:&p withObjCType:@encode(CGPoint)];
+}
+
 @interface VROrangeGradientView : NSView
 @property (nonatomic, strong) CAGradientLayer *gradient;
-@property (nonatomic, strong) NSTimer *timer;
-@property (nonatomic, assign) CGFloat angle;
 @end
 
 @implementation VROrangeGradientView
@@ -107,34 +113,55 @@ static id VRColorStop(NSUInteger hex) {
         gradient.endPoint = CGPointMake(1.0, 0.0);
         self.layer = gradient;
         self.gradient = gradient;
-        self.angle = 0;
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pauseIdle) name:VRMediaPauseIdleEffectsNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(resumeIdle) name:VRMediaResumeIdleEffectsNotification object:nil];
     }
     return self;
 }
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
-    [self.timer invalidate];
-    self.timer = nil;
-    if (!self.window) return;
-    if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) return;
-    __weak typeof(self) weakSelf = self;
-    self.timer = [NSTimer timerWithTimeInterval:1.0 / 30.0 repeats:YES block:^(NSTimer *timer) {
-        [weakSelf tick];
-    }];
-    [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
+    if (self.window) {
+        [self resumeIdle];
+    } else {
+        [self pauseIdle];
+    }
 }
 
-- (void)tick {
-    self.angle += 0.012;
-    if (self.angle > M_PI * 2.0) self.angle -= M_PI * 2.0;
-    CGFloat c = cos(self.angle);
-    CGFloat s = sin(self.angle);
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    self.gradient.startPoint = CGPointMake(0.5 + 0.48 * c, 0.5 + 0.48 * s);
-    self.gradient.endPoint = CGPointMake(0.5 - 0.48 * c, 0.5 - 0.48 * s);
-    [CATransaction commit];
+- (void)pauseIdle {
+    [self.gradient removeAllAnimations];
+}
+
+- (void)resumeIdle {
+    [self.gradient removeAllAnimations];
+    if (!self.window) return;
+    if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) return;
+
+    NSMutableArray *starts = [NSMutableArray array];
+    NSMutableArray *ends = [NSMutableArray array];
+    const NSInteger steps = 16;
+    for (NSInteger i = 0; i <= steps; i++) {
+        CGFloat a = ((CGFloat)i / (CGFloat)steps) * (CGFloat)M_PI * 2.0;
+        [starts addObject:VRPoint(0.5 + 0.48 * cos(a), 0.5 + 0.48 * sin(a))];
+        [ends addObject:VRPoint(0.5 - 0.48 * cos(a), 0.5 - 0.48 * sin(a))];
+    }
+
+    CAKeyframeAnimation *start = [CAKeyframeAnimation animationWithKeyPath:@"startPoint"];
+    start.values = starts;
+    start.duration = 28.0;
+    start.repeatCount = HUGE_VALF;
+    start.calculationMode = kCAAnimationPaced;
+    start.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+
+    CAKeyframeAnimation *end = [CAKeyframeAnimation animationWithKeyPath:@"endPoint"];
+    end.values = ends;
+    end.duration = 28.0;
+    end.repeatCount = HUGE_VALF;
+    end.calculationMode = kCAAnimationPaced;
+    end.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+
+    [self.gradient addAnimation:start forKey:@"vr.driftStart"];
+    [self.gradient addAnimation:end forKey:@"vr.driftEnd"];
 }
 
 - (void)layout {
@@ -147,7 +174,7 @@ static id VRColorStop(NSUInteger hex) {
 }
 
 - (void)dealloc {
-    [self.timer invalidate];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 @end
 

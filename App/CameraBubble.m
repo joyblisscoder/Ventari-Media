@@ -2,6 +2,7 @@
 #import "Brand.h"
 #import "DeviceCatalog.h"
 #import <AVFoundation/AVFoundation.h>
+#import <CoreMedia/CoreMedia.h>
 
 static const CGFloat kBubbleSize = 180;
 static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
@@ -38,7 +39,7 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
     NSRect frame = window.frame;
     frame.origin.x += event.deltaX;
     frame.origin.y += event.deltaY;
-    [window setFrame:frame display:YES];
+    [window setFrame:frame display:NO];
 }
 
 - (void)mouseUp:(NSEvent *)event {
@@ -114,6 +115,15 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
     [self persistFrame];
 }
 
+- (void)pausePreview {
+    [self stopPreview];
+}
+
+- (void)resumePreview {
+    if (!_window.isVisible) return;
+    [self startPreview];
+}
+
 - (void)moveOntoScreen:(NSScreen *)screen ifNeeded:(BOOL)ifNeeded {
     if (!screen) return;
     NSRect frame = _window.frame;
@@ -146,7 +156,11 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
 
     if (!_session) {
         _session = [AVCaptureSession new];
-        _session.sessionPreset = AVCaptureSessionPresetHigh;
+        if ([_session canSetSessionPreset:AVCaptureSessionPreset640x480]) {
+            _session.sessionPreset = AVCaptureSessionPreset640x480;
+        } else {
+            _session.sessionPreset = AVCaptureSessionPresetMedium;
+        }
     }
 
     [_session beginConfiguration];
@@ -160,6 +174,13 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
         [_session addInput:input];
         _input = input;
     }
+    if ([device lockForConfiguration:&error]) {
+        if ([device.activeFormat.videoSupportedFrameRateRanges count] > 0) {
+            device.activeVideoMinFrameDuration = CMTimeMake(1, 12);
+            device.activeVideoMaxFrameDuration = CMTimeMake(1, 12);
+        }
+        [device unlockForConfiguration];
+    }
     [_session commitConfiguration];
 
     if (!_view.previewLayer) {
@@ -172,7 +193,7 @@ static NSString * const kFrameKey = @"VentariRecorderCameraBubbleFrame";
         _view.previewLayer.session = _session;
     }
 
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         [self->_session startRunning];
         dispatch_async(dispatch_get_main_queue(), ^{
             AVCaptureConnection *connection = self->_view.previewLayer.connection;
